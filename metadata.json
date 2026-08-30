@@ -1,0 +1,6 @@
+{
+  "name": "Personal Journal",
+  "description": "A calm, distraction-free personal journal web application to write, organize, and reflect on daily thoughts and memories.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
