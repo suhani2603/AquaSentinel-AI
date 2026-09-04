@@ -1,210 +1,246 @@
-import React, { useState } from 'react';
-import { Sparkles, Shield, BookOpen, MessageSquare, Compass, ArrowRight, CheckCircle2, UserCheck } from 'lucide-react';
-import { signInWithGoogle } from '../lib/firebase';
+import React from 'react';
+import { 
+  Waves, 
+  ShieldAlert, 
+  Dam, 
+  Bot, 
+  SlidersHorizontal, 
+  TrendingUp, 
+  CheckCircle2, 
+  ArrowRight, 
+  LogIn, 
+  Eye, 
+  AlertTriangle,
+  Database
+} from 'lucide-react';
+import { MonitoringStation } from '../types';
+import { getRiskBadgeClasses, formatNumber } from '../utils/hydrology';
 
 interface LandingPageProps {
-  onSignIn?: () => Promise<void>;
-  isLoading?: boolean;
-  onContinueAsGuest?: () => void;
-  totalEntriesCount?: number;
+  onSignIn: () => void;
+  onContinueAsGuest: () => void;
+  stations: MonitoringStation[];
+  onSelectStation: (id: string) => void;
 }
 
-export function LandingPage({ onSignIn, isLoading = false, onContinueAsGuest, totalEntriesCount }: LandingPageProps) {
-  const [internalLoading, setInternalLoading] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  const loadingState = isLoading || internalLoading;
-
-  const handleLogin = async () => {
-    try {
-      setAuthError(null);
-      setInternalLoading(true);
-      if (onSignIn) {
-        await onSignIn();
-      } else {
-        await signInWithGoogle();
-      }
-    } catch (err: any) {
-      console.error('Sign-in error:', err);
-      // If user closed popup, don't show harsh error
-      if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
-        setAuthError(err?.message || 'Failed to sign in. Please try again.');
-      }
-    } finally {
-      setInternalLoading(false);
-    }
-  };
-
+export const LandingPage: React.FC<LandingPageProps> = ({
+  onSignIn,
+  onContinueAsGuest,
+  stations,
+  onSelectStation,
+}) => {
   return (
-    <div id="landing-page-container" className="min-h-screen bg-stone-50 text-stone-900 flex flex-col justify-between selection:bg-amber-200">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-cyan-500 selection:text-slate-950">
       
-      {/* Top Navbar */}
-      <header id="landing-header" className="w-full border-b border-stone-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      {/* Top Bar */}
+      <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-300/60 flex items-center justify-center text-amber-900 shadow-xs">
-              <BookOpen className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-700 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+              <Waves className="w-5 h-5 text-white" />
             </div>
             <div>
-              <span className="font-serif font-semibold text-lg tracking-tight text-stone-900">Personal Journal</span>
-              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-900 font-medium">with Gemini AI</span>
+              <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-cyan-300 via-sky-200 to-white bg-clip-text text-transparent">
+                AquaSentinel
+              </span>
+              <span className="ml-2 text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-400 border border-cyan-800/60">
+                HYDROLOGICAL AI
+              </span>
             </div>
           </div>
 
-          <button
-            id="landing-header-signin-button"
-            onClick={handleLogin}
-            disabled={loadingState}
-            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-stone-800 bg-stone-100 hover:bg-stone-200/80 border border-stone-300/80 rounded-xl transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
-          >
-            {loadingState ? (
-              <span className="inline-block w-3.5 h-3.5 border-2 border-stone-600 border-t-transparent rounded-full animate-spin"></span>
-            ) : (
-              <GoogleIcon />
-            )}
-            <span>Sign In</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              id="landing-guest-btn"
+              onClick={onContinueAsGuest}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors"
+            >
+              Explore as Guest
+            </button>
+            <button
+              id="landing-signin-btn"
+              onClick={onSignIn}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-md shadow-cyan-950 transition-all cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In with Google</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Main Hero & Features */}
-      <main id="landing-hero-section" className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-20 flex-1 flex flex-col items-center text-center">
+      {/* Hero Section */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
         
-        {/* Badge */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-stone-200/60 border border-stone-300 text-stone-700 text-xs font-medium mb-6">
-          <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-          <span>Powered by Gemini 2.5 Flash & Isolated Cloud Firestore</span>
+        {/* Core Notice Pill */}
+        <div className="flex justify-center mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 text-xs font-mono">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <span>AI-Powered River, Dam & Flood Risk Decision Support</span>
+          </div>
         </div>
 
         {/* Hero Title */}
-        <h1 className="font-serif text-3xl sm:text-5xl font-bold tracking-tight text-stone-900 max-w-2xl leading-tight sm:leading-tight mb-5">
-          A serene space to write, reflect, and discover clarity with Gemini.
-        </h1>
+        <div className="text-center max-w-3xl mx-auto mb-10">
+          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight mb-4">
+            Real-Time River Telemetry. <br />
+            <span className="bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-400 bg-clip-text text-transparent">
+              Grounded Hydrological Intelligence.
+            </span>
+          </h1>
+          <p className="text-base sm:text-lg text-slate-300 leading-relaxed">
+            AquaSentinel monitors river discharge, gauge water levels, and upstream dam releases. 
+            Powered by Gemini AI, it delivers transparent risk analytics and what-if flood routing simulations.
+          </p>
+        </div>
 
-        {/* Subtitle */}
-        <p className="text-stone-600 text-base sm:text-lg max-w-xl leading-relaxed mb-8">
-          Write multi-turn journal entries with an intelligent AI reflection companion. All thoughts, insights, and conversations are safely isolated in your private Firestore database.
-        </p>
+        {/* Mandatory Transparency Notice Banner */}
+        <div className="max-w-4xl mx-auto mb-12 p-4 rounded-xl bg-slate-900/90 border border-amber-500/30 text-slate-300 text-xs sm:text-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-300 mb-1">
+                Transparency & Hydrological Grounding Commitment
+              </p>
+              <p className="text-slate-400 leading-relaxed">
+                AquaSentinel strictly separates <strong>real measured sensor telemetry</strong> (flow in m³/s, gauge stage in meters), <strong>calculated risk indicators</strong> (0-100 algorithmic score), and <strong>AI explanatory assessments / hypothetical simulations</strong>. This application is a decision-support and situational awareness tool, <strong className="text-slate-200">not an official government flood evacuation warning</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
 
-        {/* Call to Action Button */}
-        <div className="w-full max-w-sm flex flex-col items-center gap-3 mb-12">
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
           <button
-            id="landing-hero-cta-button"
-            onClick={handleLogin}
-            disabled={loadingState}
-            className="w-full inline-flex items-center justify-center gap-3 px-6 py-3.5 text-sm font-semibold text-stone-900 bg-amber-300 hover:bg-amber-400 border border-amber-400 rounded-xl shadow-xs transition-all transform active:scale-98 disabled:opacity-50 cursor-pointer"
+            id="hero-signin-cta"
+            onClick={onSignIn}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm text-white bg-gradient-to-r from-cyan-600 via-sky-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-xl shadow-cyan-900/40 transition-all cursor-pointer"
           >
-            {loadingState ? (
-              <span className="inline-block w-4 h-4 border-2 border-stone-900 border-t-transparent rounded-full animate-spin"></span>
-            ) : (
-              <GoogleIcon />
-            )}
-            <span>Sign In with Google</span>
+            <LogIn className="w-4 h-4" />
+            <span>Sign In to Access Private Dashboard</span>
             <ArrowRight className="w-4 h-4 ml-1" />
           </button>
-
-          {onContinueAsGuest && (
-            <button
-              id="landing-guest-button"
-              onClick={onContinueAsGuest}
-              className="text-xs text-stone-600 hover:text-stone-900 font-medium underline-offset-4 hover:underline py-1 transition-colors cursor-pointer"
-            >
-              Continue without signing in (Local guest session)
-            </button>
-          )}
-
-          <span className="text-xs text-stone-500 flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Strict user-level isolation in Cloud Firestore</span>
-          </span>
-
-          {authError && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs w-full text-left">
-              {authError}
-            </div>
-          )}
+          <button
+            id="hero-guest-cta"
+            onClick={onContinueAsGuest}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm text-slate-200 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition-colors"
+          >
+            <Eye className="w-4 h-4 text-cyan-400" />
+            <span>Explore Live Basin Stations</span>
+          </button>
         </div>
 
-        {/* 3 Core Pillars */}
-        <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5 text-left pt-6 border-t border-stone-200">
-          
-          <div id="feature-card-conversations" className="p-5 rounded-2xl bg-white border border-stone-200 shadow-2xs">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 flex items-center justify-center mb-3.5">
-              <MessageSquare className="w-4 h-4" />
-            </div>
-            <h3 className="font-serif font-semibold text-base text-stone-900 mb-1.5">Multi-Turn AI Dialogue</h3>
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Converse with Gemini directly about your entries. Ask for constructive perspectives, explore feelings, and brainstorm tomorrow's actions.
+        {/* Live Station Telemetry Teasers */}
+        <div className="mb-16">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm uppercase tracking-wider font-mono text-slate-400 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              Active Monitoring Stations Telemetry
+            </h2>
+            <span className="text-xs font-mono text-slate-500">6 Global Basins Connected</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {stations.slice(0, 3).map((station) => {
+              const badge = getRiskBadgeClasses(station.riskLevel);
+              return (
+                <div
+                  key={station.id}
+                  onClick={() => {
+                    onSelectStation(station.id);
+                    onContinueAsGuest();
+                  }}
+                  className="p-4 rounded-xl bg-slate-900/80 border border-slate-800/80 hover:border-cyan-500/50 transition-all cursor-pointer group hover:shadow-lg hover:shadow-cyan-950/50"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="font-bold text-slate-100 group-hover:text-cyan-300 transition-colors">
+                        {station.city}, {station.country}
+                      </h3>
+                      <p className="text-xs text-slate-400 font-mono">
+                        {station.riverName} • {station.gaugeStationName}
+                      </p>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${badge.bg} ${badge.border}`}>
+                      {station.riskLevel}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 my-3 p-2.5 rounded-lg bg-slate-950/60 border border-slate-900 text-xs font-mono">
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">RIVER FLOW</span>
+                      <span className="font-bold text-slate-200">
+                        {formatNumber(station.currentFlow)} m³/s
+                      </span>
+                      <span className={`text-[10px] block ${station.flowChangePercent > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                        {station.flowChangePercent > 0 ? '+' : ''}{station.flowChangePercent.toFixed(1)}% surge
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">WATER LEVEL</span>
+                      <span className="font-bold text-slate-200">
+                        {station.currentWaterLevel.toFixed(2)} m
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        Warn: {station.warningStage.toFixed(2)}m
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-800/60">
+                    <span className="truncate">
+                      Dam: {station.upstreamDam ? station.upstreamDam.name : 'None'}
+                    </span>
+                    <span className="text-cyan-400 group-hover:translate-x-0.5 transition-transform">
+                      Inspect →
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Feature Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 text-slate-300">
+            <Waves className="w-5 h-5 text-cyan-400 mb-2" />
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">River Hydrographs</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Track 24h discharge trends, stage elevations, surge percentages, and rapid increases.
             </p>
           </div>
 
-          <div id="feature-card-summaries" className="p-5 rounded-2xl bg-white border border-stone-200 shadow-2xs">
-            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 flex items-center justify-center mb-3.5">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <h3 className="font-serif font-semibold text-base text-stone-900 mb-1.5">Instant Summaries & Insights</h3>
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Transform long stream-of-consciousness writing into clear essence summaries and key emotional takeaways automatically.
+          <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 text-slate-300">
+            <Dam className="w-5 h-5 text-blue-400 mb-2" />
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">Dam & Barrage Telemetry</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Monitor spillway releases, gate configurations, and hydraulic wave lag times.
             </p>
           </div>
 
-          <div id="feature-card-firestore" className="p-5 rounded-2xl bg-white border border-stone-200 shadow-2xs">
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center mb-3.5">
-              <Shield className="w-4 h-4" />
-            </div>
-            <h3 className="font-serif font-semibold text-base text-stone-900 mb-1.5">Isolated Cloud Firestore</h3>
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Every document is secured under your authenticated user ID. Other users cannot query or access your personal journal data.
+          <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 text-slate-300">
+            <SlidersHorizontal className="w-5 h-5 text-purple-400 mb-2" />
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">What-If Simulation Lab</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Model hypothetical flow surges, dam release spikes, and rainfall deltas in real-time.
             </p>
           </div>
 
+          <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 text-slate-300">
+            <Bot className="w-5 h-5 text-emerald-400 mb-2" />
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">Gemini AI Assistant</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Inquire about risk drivers, historical comparisons, and receive grounded situation summaries.
+            </p>
+          </div>
         </div>
-
-        {/* Feature checklist */}
-        <div className="mt-10 py-4 px-6 rounded-xl bg-stone-100/80 border border-stone-200/80 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-stone-600 font-medium">
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Realtime Cloud Sync
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Focus Ambient Sounds
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Mood & Streak Analytics
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Calendar & Feed Views
-          </span>
-        </div>
-
       </main>
 
       {/* Footer */}
-      <footer className="py-6 border-t border-stone-200/80 bg-white text-center text-xs text-stone-400">
-        <p>Personal Journal • Authenticated with Firebase Auth & Cloud Firestore</p>
+      <footer className="border-t border-slate-900 py-6 text-center text-xs text-slate-500 font-mono">
+        <p>AquaSentinel Hydrological Monitoring • Powered by Google Gemini AI & Firebase Firestore</p>
       </footer>
     </div>
   );
-}
-
-function GoogleIcon() {
-  return (
-    <svg className="w-4 h-4" viewBox="0 0 24 24">
-      <path
-        fill="#4285F4"
-        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-      />
-    </svg>
-  );
-}
+};

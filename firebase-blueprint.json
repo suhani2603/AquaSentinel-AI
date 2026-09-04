@@ -1,0 +1,153 @@
+{
+  "entities": {
+    "UserSavedStation": {
+      "title": "UserSavedStation",
+      "description": "User custom thresholds and saved monitoring stations",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "stationId": { "type": "string", "maxLength": 128 },
+        "stationName": { "type": "string", "maxLength": 128 },
+        "riverName": { "type": "string", "maxLength": 128 },
+        "customAlertFlowM3s": { "type": "number" },
+        "customAlertStageMeters": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "savedAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "stationId", "stationName"]
+    },
+    "UserObservation": {
+      "title": "UserObservation",
+      "description": "Field logs and observations made by users",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "stationId": { "type": "string", "maxLength": 128 },
+        "stationName": { "type": "string", "maxLength": 128 },
+        "riverName": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "observerName": { "type": "string", "maxLength": 128 },
+        "flowObserved": { "type": "number" },
+        "waterLevelObserved": { "type": "number" },
+        "weatherCondition": { "type": "string", "maxLength": 256 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "riskAssessment": { "type": "string", "enum": ["NORMAL", "WATCH", "WARNING", "CRITICAL"] }
+      },
+      "required": ["userId", "stationId", "notes", "riskAssessment"]
+    },
+    "UserSimulation": {
+      "title": "UserSimulation",
+      "description": "Saved What-If hypothetical exploration scenarios",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "stationId": { "type": "string", "maxLength": 128 },
+        "stationName": { "type": "string", "maxLength": 128 },
+        "riverName": { "type": "string", "maxLength": 128 },
+        "flowDeltaPercent": { "type": "number" },
+        "additionalDamDischargeM3s": { "type": "number" },
+        "additionalRainfallMm": { "type": "number" },
+        "baselineFlow": { "type": "number" },
+        "projectedFlow": { "type": "number" },
+        "baselineWaterLevel": { "type": "number" },
+        "projectedWaterLevel": { "type": "number" },
+        "baselineRiskScore": { "type": "number" },
+        "projectedRiskScore": { "type": "number" },
+        "projectedRiskLevel": { "type": "string", "enum": ["NORMAL", "WATCH", "WARNING", "CRITICAL"] },
+        "riskDelta": { "type": "number" },
+        "aiAnalysis": { "type": "string", "maxLength": 5000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "stationId", "flowDeltaPercent"]
+    },
+    "UserAlertPreference": {
+      "title": "UserAlertPreference",
+      "description": "Notification settings for the user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "enabled": { "type": "boolean" },
+        "riverAlerts": { "type": "boolean" },
+        "heavyRainfallAlerts": { "type": "boolean" },
+        "damReleaseAlerts": { "type": "boolean" },
+        "floodRiskAlerts": { "type": "boolean" },
+        "selectedStationId": { "type": "string", "maxLength": 128 },
+        "browserNotificationsGranted": { "type": "boolean" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "enabled"]
+    },
+    "EmergencyReport": {
+      "title": "EmergencyReport",
+      "description": "User-submitted emergency SOS assistance requests with responder verification lifecycle",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "userDisplayName": { "type": "string", "maxLength": 128 },
+        "isAnonymous": { "type": "boolean" },
+        "stationId": { "type": "string", "maxLength": 128 },
+        "locationName": { "type": "string", "maxLength": 256 },
+        "landmark": { "type": "string", "maxLength": 256 },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "peopleNeedingAssistance": { "type": "number" },
+        "hasChildren": { "type": "boolean" },
+        "hasElderly": { "type": "boolean" },
+        "hasMobilityIssues": { "type": "boolean" },
+        "urgency": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "description": { "type": "string", "maxLength": 2000 },
+        "contactNumber": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["REPORTED", "UNDER_REVIEW", "VERIFIED", "TEAM_ASSIGNED", "IN_PROGRESS", "RESOLVED"] },
+        "isResponderVerified": { "type": "boolean" },
+        "verifiedBy": { "type": "string", "maxLength": 128 },
+        "verificationNotes": { "type": "string", "maxLength": 1000 },
+        "assignedTeam": { "type": "string", "maxLength": 128 },
+        "flagCount": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "stationId", "locationName", "peopleNeedingAssistance", "urgency", "description", "status", "createdAt"]
+    },
+    "CommunityPeopleReport": {
+      "title": "CommunityPeopleReport",
+      "description": "Community user-reported estimates of people needing assistance in flood affected areas",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "stationId": { "type": "string", "maxLength": 128 },
+        "locationArea": { "type": "string", "maxLength": 256 },
+        "reportedCount": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "stationId", "locationArea", "reportedCount", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/savedStations/{stationId}": {
+      "schema": "UserSavedStation",
+      "description": "User bookmarked stations and custom alert thresholds"
+    },
+    "/users/{userId}/observations/{obsId}": {
+      "schema": "UserObservation",
+      "description": "Field logs and observations created by the user"
+    },
+    "/users/{userId}/simulations/{simId}": {
+      "schema": "UserSimulation",
+      "description": "Saved hypothetical What-If scenarios for the user"
+    },
+    "/users/{userId}/preferences/alerts": {
+      "schema": "UserAlertPreference",
+      "description": "User notification preferences and permissions"
+    },
+    "/emergency_reports/{reportId}": {
+      "schema": "EmergencyReport",
+      "description": "Public emergency SOS assistance requests with responder verification"
+    },
+    "/community_people_reports/{reportId}": {
+      "schema": "CommunityPeopleReport",
+      "description": "Community aggregated counts of people needing assistance"
+    }
+  }
+}

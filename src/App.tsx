@@ -1,467 +1,395 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useEffect, useMemo } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { JournalEntry, ViewMode, MoodType, AIMessage } from './types';
-import { getStoredEntries, saveStoredEntries, calculateJournalStats } from './utils/storage';
+import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
   auth, 
-  subscribeToUserEntries, 
-  saveUserEntryToFirestore, 
-  deleteUserEntryFromFirestore, 
-  batchSyncEntriesToFirestore,
-  signOutUser 
+  signInWithGoogle, 
+  logOut,
+  subscribeToUserSavedStations,
+  saveUserStation,
+  subscribeToUserObservations,
+  saveUserObservation,
+  deleteUserObservation,
+  subscribeToUserSimulations,
+  saveUserSimulation,
+  deleteUserSimulation,
+  subscribeToEmergencyReports
 } from './lib/firebase';
-import { LandingPage } from './components/LandingPage';
-import { Header } from './components/Header';
-import { StatsBar } from './components/StatsBar';
-import { EntryList } from './components/EntryList';
-import { CalendarView } from './components/CalendarView';
-import { EntryEditor } from './components/EntryEditor';
-import { EntryViewModal } from './components/EntryViewModal';
-import { AmbientSoundPlayer } from './components/AmbientSoundPlayer';
-import { PromptsModal } from './components/PromptsModal';
-import { ExportImportModal } from './components/ExportImportModal';
+import { INITIAL_STATIONS } from './data/stationsData';
+import { 
+  AppOperationalMode,
+  AppLanguage,
+  MonitoringStation, 
+  ViewMode, 
+  UserSavedStation, 
+  ObservationLog, 
+  WhatIfScenario, 
+  AquaSentinelMessage,
+  EmergencyReport 
+} from './types';
+import { generateStationAlerts } from './utils/hydrology';
+import { hydrologyDataService } from './services/hydrologyDataService';
+import { 
+  getLocalGuestObservations,
+  saveLocalGuestObservations,
+  getLocalGuestSimulations,
+  saveLocalGuestSimulations
+} from './utils/storage';
 
-export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [isFirestoreSynced, setIsFirestoreSynced] = useState(false);
-  const [isGuestMode, setIsGuestMode] = useState(false);
+import { Navbar } from './components/Navbar';
+import { OverviewView } from './components/OverviewView';
+import { RiverMonitorView } from './components/RiverMonitorView';
+import { DamMonitorView } from './components/DamMonitorView';
+import { RainfallView } from './components/RainfallView';
+import { RiskIndicatorView } from './components/RiskIndicatorView';
+import { AlertsView } from './components/AlertsView';
+import { WhatIfView } from './components/WhatIfView';
+import { HistoryView } from './components/HistoryView';
+import { AssistantView } from './components/AssistantView';
+import { TestingView } from './components/TestingView';
+import { ForecastView } from './components/ForecastView';
+import { EmergencyRescueView } from './components/EmergencyRescueView';
+import { SimulationScenarioId, SimulationState } from './services/simulationEngine';
 
-  const [entries, setEntries] = useState<JournalEntry[]>(() => getStoredEntries());
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+export function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isGuest, setIsGuest] = useState<boolean>(true);
+  const [language, setLanguage] = useState<AppLanguage>('en');
 
-  // Filter States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMood, setSelectedMood] = useState<MoodType | 'all'>('all');
-  const [selectedTag, setSelectedTag] = useState<string | 'all'>('all');
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  // Core Station Telemetry & Mode State - Dehradun is default location
+  const [stations, setStations] = useState<MonitoringStation[]>(() => hydrologyDataService.getStations());
+  const [operationalMode, setOperationalMode] = useState<AppOperationalMode>(() => hydrologyDataService.getOperationalMode());
+  const [simulationState, setSimulationState] = useState<SimulationState>(() => hydrologyDataService.getSimulationState());
+  const [selectedStationId, setSelectedStationId] = useState<string>('station-dehradun-song');
+  const [currentView, setCurrentView] = useState<ViewMode>('overview');
+  const [isRefreshingLive, setIsRefreshingLive] = useState<boolean>(false);
 
-  // Modal States
-  const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [editorInitialPrompt, setEditorInitialPrompt] = useState<string | undefined>(undefined);
-  const [viewingEntry, setViewingEntry] = useState<JournalEntry | null>(null);
-  const [isPromptsOpen, setIsPromptsOpen] = useState(false);
-  const [isAudioOpen, setIsAudioOpen] = useState(false);
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
-  const [isExportImportOpen, setIsExportImportOpen] = useState(false);
+  // User collections & rescue reports
+  const [savedStations, setSavedStations] = useState<UserSavedStation[]>([]);
+  const [observations, setObservations] = useState<ObservationLog[]>([]);
+  const [simulations, setSimulations] = useState<WhatIfScenario[]>([]);
+  const [chatMessages, setChatMessages] = useState<AquaSentinelMessage[]>([]);
+  const [rescueReports, setRescueReports] = useState<EmergencyReport[]>([]);
 
-  // Toast feedback
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
-  };
-
-  // 1. Listen for Firebase Auth state changes
+  // 1. Live Hydrology Telemetry Subscription
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setIsAuthLoading(false);
-      if (user) {
-        setIsGuestMode(false);
-      }
+    const unsubscribe = hydrologyDataService.subscribeToTelemetry((updatedStations, mode, updatedSimState) => {
+      setStations(updatedStations);
+      setOperationalMode(mode);
+      setSimulationState(updatedSimState);
     });
     return () => unsubscribe();
   }, []);
 
-  // 2. Real-time Firestore sync when authenticated
+  // 2. Firebase Auth Listener
   useEffect(() => {
-    if (!currentUser) {
-      setIsFirestoreSynced(false);
-      return;
-    }
-
-    const unsubscribe = subscribeToUserEntries(
-      currentUser.uid,
-      (firestoreEntries) => {
-        // If user has entries in Firestore, update state
-        if (firestoreEntries.length > 0) {
-          setEntries(firestoreEntries);
-          saveStoredEntries(firestoreEntries);
-        } else {
-          // If Firestore is empty but user had local demo entries, sync them to Firestore
-          const localEntries = getStoredEntries();
-          if (localEntries.length > 0) {
-            batchSyncEntriesToFirestore(currentUser.uid, localEntries);
-          }
-        }
-        setIsFirestoreSynced(true);
-      },
-      (error) => {
-        console.warn('Firestore subscription notice (using local fallback):', error);
-        setIsFirestoreSynced(false);
-      }
-    );
-
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, []);
 
-  // Sync to local storage as fallback
+  // 3. Data Subscriptions (Firestore when authenticated, local state fallback when guest)
   useEffect(() => {
-    saveStoredEntries(entries);
-  }, [entries]);
+    if (user) {
+      const unsubStations = subscribeToUserSavedStations(user.uid, (data) => {
+        setSavedStations(data);
+      });
+      const unsubObs = subscribeToUserObservations(user.uid, (data) => {
+        setObservations(data);
+      });
+      const unsubSims = subscribeToUserSimulations(user.uid, (data) => {
+        setSimulations(data);
+      });
 
-  // Derived statistics
-  const stats = useMemo(() => calculateJournalStats(entries), [entries]);
-
-  // All unique user tags
-  const allTags = useMemo(() => {
-    const tagsSet = new Set<string>();
-    entries.forEach((e) => e.tags.forEach((t) => tagsSet.add(t)));
-    return Array.from(tagsSet);
-  }, [entries]);
-
-  // Filtered & Searched entries
-  const filteredEntries = useMemo(() => {
-    return entries.filter((entry) => {
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesTitle = entry.title.toLowerCase().includes(q);
-        const matchesContent = entry.content.toLowerCase().includes(q);
-        const matchesTag = entry.tags.some((t) => t.toLowerCase().includes(q));
-        const matchesLocation = entry.location?.toLowerCase().includes(q);
-        const matchesPrompt = entry.promptUsed?.toLowerCase().includes(q);
-
-        if (!matchesTitle && !matchesContent && !matchesTag && !matchesLocation && !matchesPrompt) {
-          return false;
-        }
-      }
-
-      if (selectedMood !== 'all' && entry.mood !== selectedMood) {
-        return false;
-      }
-
-      if (selectedTag !== 'all' && !entry.tags.includes(selectedTag)) {
-        return false;
-      }
-
-      if (favoritesOnly && !entry.isFavorite) {
-        return false;
-      }
-
-      return true;
-    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [entries, searchQuery, selectedMood, selectedTag, favoritesOnly]);
-
-  // Handlers
-  const handleSaveEntry = async (savedEntry: JournalEntry) => {
-    const entryWithUser: JournalEntry = {
-      ...savedEntry,
-      userId: currentUser?.uid || 'guest'
-    };
-
-    // Optimistic local update
-    const exists = entries.some((e) => e.id === entryWithUser.id);
-    const updatedEntries = exists
-      ? entries.map((e) => (e.id === entryWithUser.id ? entryWithUser : e))
-      : [entryWithUser, ...entries];
-    
-    setEntries(updatedEntries);
-    saveStoredEntries(updatedEntries);
-    showToast(exists ? 'Journal entry updated' : 'New journal entry recorded');
-
-    // Cloud Firestore persistence
-    if (currentUser) {
-      try {
-        await saveUserEntryToFirestore(currentUser.uid, entryWithUser);
-      } catch (err) {
-        console.error('Failed to sync entry to Firestore:', err);
-      }
+      return () => {
+        unsubStations();
+        unsubObs();
+        unsubSims();
+      };
+    } else {
+      setObservations(getLocalGuestObservations());
+      setSimulations(getLocalGuestSimulations());
     }
+  }, [user]);
 
-    setIsEditorOpen(false);
-    setEditingEntry(null);
-    setEditorInitialPrompt(undefined);
-
-    if (viewingEntry && viewingEntry.id === entryWithUser.id) {
-      setViewingEntry(entryWithUser);
-    }
-  };
-
-  const handleDeleteEntry = async (id: string) => {
-    const updatedEntries = entries.filter((e) => e.id !== id);
-    setEntries(updatedEntries);
-    saveStoredEntries(updatedEntries);
-    setIsEditorOpen(false);
-    setViewingEntry(null);
-    showToast('Journal entry deleted');
-
-    if (currentUser) {
-      try {
-        await deleteUserEntryFromFirestore(currentUser.uid, id);
-      } catch (err) {
-        console.error('Failed to delete entry from Firestore:', err);
-      }
-    }
-  };
-
-  const handleToggleFavorite = async (id: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    
-    let targetEntry: JournalEntry | null = null;
-    const updated = entries.map((entry) => {
-      if (entry.id === id) {
-        const nextState = !entry.isFavorite;
-        targetEntry = { ...entry, isFavorite: nextState };
-        showToast(nextState ? 'Added to favorites' : 'Removed from favorites');
-        return targetEntry;
-      }
-      return entry;
+  // 4. Live Emergency Rescue Reports Subscription
+  useEffect(() => {
+    const unsubRescue = subscribeToEmergencyReports((reports) => {
+      setRescueReports(reports);
     });
+    return () => unsubRescue();
+  }, []);
 
-    setEntries(updated);
-    saveStoredEntries(updated);
+  // Selected station reference
+  const currentStation = stations.find((s) => s.id === selectedStationId) || stations[0] || INITIAL_STATIONS[0];
 
-    if (viewingEntry && viewingEntry.id === id) {
-      setViewingEntry((prev) => prev ? { ...prev, isFavorite: !prev.isFavorite } : null);
+  // Active alerts count across all stations
+  const activeAlertsCount = stations.reduce((acc, st) => {
+    return acc + generateStationAlerts(st).length;
+  }, 0);
+
+  // Active rescue metrics
+  const activeRescueReportsCount = rescueReports.filter(r => r.status !== 'RESOLVED').length;
+  const peopleNeedingAssistanceCount = rescueReports
+    .filter(r => r.status !== 'RESOLVED')
+    .reduce((acc, r) => acc + (r.peopleNeedingAssistance || 1), 0);
+  const verifiedRescueReportsCount = rescueReports.filter(r => r.evidenceStatus === 'VERIFIED').length;
+
+  // Authentication Handlers
+  const handleSignIn = async () => {
+    try {
+      await signInWithGoogle();
+      setIsGuest(false);
+    } catch (error) {
+      console.error('Sign in error:', error);
     }
-
-    if (currentUser && targetEntry) {
-      try {
-        await saveUserEntryToFirestore(currentUser.uid, targetEntry);
-      } catch (err) {
-        console.error('Failed to update favorite status:', err);
-      }
-    }
-  };
-
-  const handleUpdateEntryAI = async (entryId: string, aiMessages: AIMessage[], summary?: string, insights?: string[]) => {
-    let updatedEntry: JournalEntry | null = null;
-    const updated = entries.map((entry) => {
-      if (entry.id === entryId) {
-        updatedEntry = {
-          ...entry,
-          aiMessages,
-          aiSummary: summary !== undefined ? summary : entry.aiSummary,
-          aiInsights: insights !== undefined ? insights : entry.aiInsights,
-          updatedAt: new Date().toISOString()
-        };
-        return updatedEntry;
-      }
-      return entry;
-    });
-
-    setEntries(updated);
-    saveStoredEntries(updated);
-
-    if (viewingEntry && viewingEntry.id === entryId && updatedEntry) {
-      setViewingEntry(updatedEntry);
-    }
-
-    if (currentUser && updatedEntry) {
-      try {
-        await saveUserEntryToFirestore(currentUser.uid, updatedEntry);
-      } catch (err) {
-        console.error('Failed to update entry AI to Firestore:', err);
-      }
-    }
-  };
-
-  const handleOpenNewEntry = (initialPrompt?: string, dateStr?: string) => {
-    setEditingEntry(dateStr ? {
-      id: `entry-${Date.now()}`,
-      userId: currentUser?.uid || 'guest',
-      title: '',
-      content: '',
-      createdAt: new Date(`${dateStr}T12:00:00`).toISOString(),
-      updatedAt: new Date().toISOString(),
-      mood: 'peaceful',
-      weather: 'sunny',
-      tags: ['Reflection'],
-      isFavorite: false,
-      promptUsed: initialPrompt
-    } : null);
-    setEditorInitialPrompt(initialPrompt);
-    setIsEditorOpen(true);
-  };
-
-  const handleEditEntry = (entry: JournalEntry) => {
-    setViewingEntry(null);
-    setEditingEntry(entry);
-    setEditorInitialPrompt(entry.promptUsed);
-    setIsEditorOpen(true);
-  };
-
-  const handleImportEntries = (imported: JournalEntry[]) => {
-    setEntries(imported);
-    saveStoredEntries(imported);
-    if (currentUser) {
-      batchSyncEntriesToFirestore(currentUser.uid, imported);
-    }
-    showToast(`Restored ${imported.length} journal entries`);
-  };
-
-  const handleClearAll = () => {
-    setEntries([]);
-    saveStoredEntries([]);
-    showToast('All journal entries have been cleared');
   };
 
   const handleSignOut = async () => {
     try {
-      await signOutUser();
-      setCurrentUser(null);
-      setIsGuestMode(false);
-      showToast('Signed out successfully');
-    } catch (err) {
-      console.error('Sign out error:', err);
+      await logOut();
+      setIsGuest(true);
+      setCurrentView('overview');
+    } catch (error) {
+      console.error('Sign out error:', error);
     }
   };
 
-  // If initial auth check is loading
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center p-6 text-stone-600">
-        <div className="w-10 h-10 border-3 border-amber-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="font-serif text-lg text-stone-800">Opening your personal sanctuary...</p>
-      </div>
-    );
-  }
+  // Operational Mode Toggle
+  const handleToggleOperationalMode = async (mode: AppOperationalMode) => {
+    setIsRefreshingLive(true);
+    try {
+      await hydrologyDataService.setOperationalMode(mode);
+    } finally {
+      setIsRefreshingLive(false);
+    }
+  };
 
-  // If not logged in and not in guest mode, show the Landing & Login screen
-  if (!currentUser && !isGuestMode) {
-    return (
-      <LandingPage
-        onContinueAsGuest={() => setIsGuestMode(true)}
-        totalEntriesCount={entries.length}
-      />
-    );
-  }
+  // Apply scenario to live state from Testing Panel
+  const handleApplyScenarioToLiveApp = (targetStationId: string, scenarioId: string) => {
+    hydrologyDataService.setScenario(scenarioId as any, targetStationId);
+    setSelectedStationId(targetStationId);
+  };
+
+  // Reset baseline
+  const handleResetDefault = () => {
+    hydrologyDataService.resetSimulation();
+  };
+
+  // User Custom Threshold Handlers
+  const handleSaveCustomThresholds = async (stationId: string, flowM3s?: number, stageM?: number) => {
+    const st = stations.find((s) => s.id === stationId);
+    const item: UserSavedStation = {
+      id: stationId,
+      stationId,
+      stationName: st ? st.city : stationId,
+      riverName: st ? st.riverName : '',
+      customAlertFlowM3s: flowM3s,
+      customAlertStageMeters: stageM,
+      savedAt: new Date().toISOString()
+    };
+
+    if (user) {
+      await saveUserStation(user.uid, item);
+    } else {
+      setSavedStations((prev) => {
+        const filtered = prev.filter((p) => p.stationId !== stationId);
+        return [...filtered, item];
+      });
+    }
+  };
+
+  // Observations Handlers
+  const handleAddObservation = async (obs: ObservationLog) => {
+    if (user) {
+      await saveUserObservation(user.uid, obs);
+    } else {
+      const updated = [obs, ...observations];
+      setObservations(updated);
+      saveLocalGuestObservations(updated);
+    }
+  };
+
+  const handleDeleteObservation = async (obsId: string) => {
+    if (user) {
+      await deleteUserObservation(user.uid, obsId);
+    } else {
+      const updated = observations.filter((o) => o.id !== obsId);
+      setObservations(updated);
+      saveLocalGuestObservations(updated);
+    }
+  };
+
+  // Simulation Handlers
+  const handleSaveScenario = async (sim: WhatIfScenario) => {
+    if (user) {
+      await saveUserSimulation(user.uid, sim);
+    } else {
+      const updated = [sim, ...simulations];
+      setSimulations(updated);
+      saveLocalGuestSimulations(updated);
+    }
+  };
+
+  const handleDeleteSimulation = async (simId: string) => {
+    if (user) {
+      await deleteUserSimulation(user.uid, simId);
+    } else {
+      const updated = simulations.filter((s) => s.id !== simId);
+      setSimulations(updated);
+      saveLocalGuestSimulations(updated);
+    }
+  };
+
+  // Chat Assistant Handlers
+  const handleSendMessage = (msg: AquaSentinelMessage) => {
+    setChatMessages((prev) => [...prev, msg]);
+  };
+
+  const handleClearHistory = () => {
+    setChatMessages([]);
+  };
 
   return (
-    <div id="personal-journal-app" className="min-h-screen bg-stone-50 text-stone-900 flex flex-col antialiased">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans antialiased transition-colors">
       
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div 
-          id="app-toast-notification"
-          className="fixed bottom-6 right-6 z-50 bg-stone-900 text-stone-100 px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold flex items-center gap-2 animate-bounce"
-        >
-          <span>✓</span>
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* App Header with user auth info */}
-      <Header
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        onNewEntry={() => handleOpenNewEntry()}
-        onOpenPrompts={() => setIsPromptsOpen(true)}
-        onOpenAudio={() => setIsAudioOpen(true)}
-        onOpenExportImport={() => setIsExportImportOpen(true)}
-        isAudioPlaying={isAudioPlaying}
-        stats={stats}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        user={currentUser}
+      {/* Top Header & Navigation */}
+      <Navbar
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        stations={stations}
+        selectedStationId={selectedStationId}
+        onSelectStation={setSelectedStationId}
+        user={user}
+        onSignIn={handleSignIn}
         onSignOut={handleSignOut}
-        isFirestoreSynced={isFirestoreSynced}
+        isGuest={isGuest}
+        onToggleGuest={() => setIsGuest(!isGuest)}
+        activeAlertsCount={activeAlertsCount}
+        operationalMode={operationalMode}
+        onToggleOperationalMode={handleToggleOperationalMode}
+        language={language}
+        onToggleLanguage={setLanguage}
       />
 
       {/* Main Content Area */}
-      <main id="main-content-section" className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        
-        {/* Metric Insights & Filter Pills */}
-        <StatsBar
-          stats={stats}
-          selectedMood={selectedMood}
-          onMoodSelect={setSelectedMood}
-          selectedTag={selectedTag}
-          onTagSelect={setSelectedTag}
-          favoritesOnly={favoritesOnly}
-          onFavoritesToggle={() => setFavoritesOnly(!favoritesOnly)}
-          allTags={allTags}
-        />
-
-        {/* View Layout (Grid / Timeline List / Calendar) */}
-        {viewMode === 'calendar' ? (
-          <CalendarView
-            entries={entries}
-            onSelectEntry={(entry) => setViewingEntry(entry)}
-            onNewEntryForDate={(dateStr) => handleOpenNewEntry(undefined, dateStr)}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {(currentView === 'overview' || currentView === 'dashboard') && (
+          <OverviewView
+            station={currentStation}
+            onViewChange={setCurrentView}
+            onSelectStation={setSelectedStationId}
+            allStations={stations}
+            language={language}
+            activeRescueReportsCount={activeRescueReportsCount}
+            peopleNeedingAssistanceCount={peopleNeedingAssistanceCount}
+            verifiedRescueReportsCount={verifiedRescueReportsCount}
+            rescueReports={rescueReports}
           />
-        ) : (
-          <EntryList
-            entries={filteredEntries}
-            viewMode={viewMode}
-            onSelectEntry={(entry) => setViewingEntry(entry)}
-            onToggleFavorite={handleToggleFavorite}
-            onNewEntry={() => handleOpenNewEntry()}
-            searchQuery={searchQuery}
+        )}
+
+        {currentView === 'river' && (
+          <RiverMonitorView 
+            station={currentStation} 
+            allStations={stations}
+            onSelectStation={setSelectedStationId}
+          />
+        )}
+
+        {currentView === 'dam' && (
+          <DamMonitorView station={currentStation} />
+        )}
+
+        {currentView === 'rainfall' && (
+          <RainfallView station={currentStation} />
+        )}
+
+        {currentView === 'forecast' && (
+          <ForecastView
+            currentStation={currentStation}
+            language={language}
+          />
+        )}
+
+        {currentView === 'risk' && (
+          <RiskIndicatorView station={currentStation} />
+        )}
+
+        {currentView === 'alerts' && (
+          <AlertsView
+            stations={stations}
+            selectedStationId={selectedStationId}
+            onSelectStation={setSelectedStationId}
+            savedStations={savedStations}
+            onSaveCustomThresholds={handleSaveCustomThresholds}
+          />
+        )}
+
+        {currentView === 'emergency' && (
+          <EmergencyRescueView
+            currentStation={currentStation}
+            currentUser={user}
+            onSelectStation={setSelectedStationId}
+          />
+        )}
+
+        {currentView === 'whatif' && (
+          <WhatIfView
+            station={currentStation}
+            onSaveScenario={handleSaveScenario}
+          />
+        )}
+
+        {currentView === 'history' && (
+          <HistoryView
+            station={currentStation}
+            observations={observations}
+            simulations={simulations}
+            onAddObservation={handleAddObservation}
+            onDeleteObservation={handleDeleteObservation}
+            onDeleteSimulation={handleDeleteSimulation}
+            onSelectStation={setSelectedStationId}
+          />
+        )}
+
+        {currentView === 'assistant' && (
+          <AssistantView
+            station={currentStation}
+            messages={chatMessages}
+            onSendMessage={handleSendMessage}
+            onClearHistory={handleClearHistory}
+          />
+        )}
+
+        {currentView === 'testing' && (
+          <TestingView
+            currentStation={currentStation}
+            allStations={stations}
+            onApplyScenarioToLiveApp={handleApplyScenarioToLiveApp}
+            onResetDefault={handleResetDefault}
           />
         )}
       </main>
 
-      {/* Footer */}
-      <footer id="app-footer" className="py-6 border-t border-stone-200/80 bg-white text-center text-xs text-stone-400">
-        <p>Personal Journal • A quiet space for mindful reflection and Gemini AI introspection</p>
+      {/* Simple Citizen-Friendly Footer */}
+      <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-4 px-4 text-xs text-zinc-600 dark:text-zinc-400 font-medium">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+          <div className="flex items-center gap-2">
+            <span>🟢</span>
+            <span className="font-semibold text-zinc-900 dark:text-zinc-100">Data sources verified</span>
+          </div>
+          <div className="text-zinc-500 dark:text-zinc-400">
+            Last updated: <span className="font-semibold text-zinc-800 dark:text-zinc-200">{currentStation.lastTelemetryUpdate || 'Today, 10:20 AM'}</span>
+          </div>
+          <div className="text-zinc-500 dark:text-zinc-400 max-w-md text-center sm:text-right">
+            Always follow official instructions from local disaster management authorities.
+          </div>
+        </div>
       </footer>
-
-      {/* Entry Editor Modal */}
-      {isEditorOpen && (
-        <EntryEditor
-          initialEntry={editingEntry}
-          onSave={handleSaveEntry}
-          onClose={() => {
-            setIsEditorOpen(false);
-            setEditingEntry(null);
-            setEditorInitialPrompt(undefined);
-          }}
-          onDelete={handleDeleteEntry}
-          initialPrompt={editorInitialPrompt}
-          userId={currentUser?.uid || 'guest'}
-        />
-      )}
-
-      {/* Entry Reader / View Modal */}
-      {viewingEntry && (
-        <EntryViewModal
-          entry={viewingEntry}
-          onClose={() => setViewingEntry(null)}
-          onEdit={handleEditEntry}
-          onDelete={handleDeleteEntry}
-          onToggleFavorite={(id) => handleToggleFavorite(id)}
-          onUpdateEntryAI={handleUpdateEntryAI}
-        />
-      )}
-
-      {/* Ambient Sound Player Modal */}
-      <AmbientSoundPlayer
-        isOpen={isAudioOpen}
-        onClose={() => setIsAudioOpen(false)}
-        onAudioStateChange={setIsAudioPlaying}
-      />
-
-      {/* Reflective Prompts Modal */}
-      <PromptsModal
-        isOpen={isPromptsOpen}
-        onClose={() => setIsPromptsOpen(false)}
-        onSelectPrompt={(promptText) => {
-          handleOpenNewEntry(promptText);
-        }}
-      />
-
-      {/* Export & Import Modal */}
-      <ExportImportModal
-        isOpen={isExportImportOpen}
-        onClose={() => setIsExportImportOpen(false)}
-        entries={entries}
-        onImportEntries={handleImportEntries}
-        onClearAll={handleClearAll}
-      />
-
     </div>
   );
 }
+
+export default App;
